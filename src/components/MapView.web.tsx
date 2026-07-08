@@ -51,7 +51,11 @@ export const AppMapView = forwardRef<any, MapViewProps>(
 
 const styles = StyleSheet.create({
   webMapContainer: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: '#f3f3f3',
     justifyContent: 'center',
     alignItems: 'center',
@@ -110,7 +114,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   gridOverlay: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
     opacity: 0.05,
     borderWidth: 1,
     borderColor: '#000000',
