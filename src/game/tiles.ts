@@ -1,68 +1,64 @@
-import * as h3 from 'h3-js';
 import { TimedPoint, Coordinate } from './coords';
 
-// Section 7 Constants
-export const H3_RES = 10; // Tile resolution (approx. tens of meters)
+// Standard LAN backend API URL fallback (using machine IP so physical phone can connect)
+const DEFAULT_BACKEND_URL = 'http://192.168.0.103:3000';
+
+function getBackendUrl(): string {
+  // Expo loads environment variables prefixed with EXPO_PUBLIC_ automatically
+  return process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BACKEND_URL;
+}
 
 /**
- * Returns all H3 cell indexes contained within the closed loop path.
- * Coordinate order for H3 is [lat, lng].
+ * Fetches cells inside a closed loop and their boundaries from the backend.
+ * App communicates with the backend only over fetch (Option A).
  */
-export function tilesInsideLoop(path: TimedPoint[]): string[] {
-  if (path.length < 3) {
-    return [];
-  }
-
-  // Convert to array of [lat, lng] for H3
-  const loopCoords = path.map(p => [p.lat, p.lng]);
-
+export async function tilesInsideLoop(
+  path: TimedPoint[]
+): Promise<{ cellId: string; coords: { latitude: number; longitude: number }[] }[]> {
   try {
-    // polygonToCells(coordinates, resolution)
-    return h3.polygonToCells(loopCoords, H3_RES);
+    const response = await fetch(`${getBackendUrl()}/api/tiles/claim-loop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to claim loop tiles: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.tiles || [];
   } catch (err) {
-    console.error('Error generating cells inside loop:', err);
+    console.error('Error fetching tiles inside loop:', err);
     return [];
   }
 }
 
 /**
- * Converts a lat/lng coordinate to an H3 cell index.
+ * Fetches onboarding cell calculations from the backend.
+ * Returns the baseCell ID, its boundary coordinates, and its protection disk cell list.
  */
-export function coordinateToCell(coord: Coordinate | { lat: number, lng: number }): string {
+export async function fetchOnboardingData(
+  coords: Coordinate
+): Promise<{
+  baseCell: string;
+  baseCoords: { latitude: number; longitude: number }[];
+  protectedCells: string[];
+} | null> {
   try {
-    return h3.latLngToCell(coord.lat, coord.lng, H3_RES);
-  } catch (err) {
-    console.error('Error converting coordinate to cell:', err);
-    return '';
-  }
-}
+    const response = await fetch(`${getBackendUrl()}/api/tiles/onboard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: coords.lat, lng: coords.lng }),
+    });
 
-/**
- * Returns the boundary vertices of an H3 cell in {latitude, longitude} shape for react-native-maps.
- */
-export function renderCell(cell: string): { latitude: number; longitude: number }[] {
-  try {
-    // cellToBoundary(cell, isGeoJson = false) -> returns [lat, lng] pairs
-    const boundary = h3.cellToBoundary(cell);
-    return boundary.map(([lat, lng]) => ({
-      latitude: lat,
-      longitude: lng,
-    }));
-  } catch (err) {
-    console.error(`Error rendering boundary for cell ${cell}:`, err);
-    return [];
-  }
-}
+    if (!response.ok) {
+      throw new Error(`Failed onboarding tile calculation: ${response.statusText}`);
+    }
 
-/**
- * Returns grid disks (rings) of H3 cells around an origin.
- * Used for claim/steal/roots check.
- */
-export function getGridDisk(cell: string, ringRadius: number): string[] {
-  try {
-    return h3.gridDisk(cell, ringRadius);
+    return await response.json();
   } catch (err) {
-    console.error(`Error getting grid disk for cell ${cell} with radius ${ringRadius}:`, err);
-    return [];
+    console.error('Error fetching onboarding tile data:', err);
+    return null;
   }
 }

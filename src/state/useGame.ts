@@ -2,14 +2,14 @@ import { create } from 'zustand';
 import { TimedPoint, Coordinate } from '../game/coords';
 import { isPlausibleStep } from '../game/anticheat';
 import { isLoopClosed, loopAreaSqM } from '../game/loop';
-import { coordinateToCell, tilesInsideLoop } from '../game/tiles';
+import { fetchOnboardingData, tilesInsideLoop } from '../game/tiles';
 
 export interface User {
   uid: string;
   displayName: string;
   color: string; // Hex color code
   baseCell: string; // H3 index of home base
-  protectedRadius: number; // Hex rings that are rooted
+  protectedCells: string[]; // List of H3 cell IDs that are protected
   totalArea: number; // Sq meters
   createdAt: number;
 }
@@ -19,6 +19,7 @@ export interface Tile {
   claimedAt: number;
   isBase: boolean;
   color: string; // cached owner color for rendering
+  coords: { latitude: number; longitude: number }[]; // boundary vertices cached in store
 }
 
 export interface Walk {
@@ -32,6 +33,7 @@ export interface Walk {
 interface GameState {
   // Authentication & Onboarding
   user: User | null;
+  isOnboarding: boolean;
   
   // Tracking Walk State
   isTracking: boolean;
@@ -44,15 +46,15 @@ interface GameState {
   walkHistory: Walk[];
   
   // Actions
-  onboardUser: (coords: Coordinate) => void;
+  onboardUser: (coords: Coordinate) => Promise<void>;
   startWalk: () => void;
   addTrackingPoint: (coords: Coordinate) => { closed: boolean; area: number };
-  stopWalk: () => { closed: boolean; area: number; claimedCount: number };
-  claimTiles: (cellIds: string[], ownerId: string, color: string) => void;
+  stopWalk: () => Promise<{ closed: boolean; area: number; claimedCount: number }>;
+  claimTiles: (tilesToClaim: { cellId: string; coords: { latitude: number; longitude: number }[] }[], ownerId: string, color: string) => void;
   resetGame: () => void;
 }
 
-// Fixed color palette for new players (Uber-inspired bold popping colors)
+// Fixed color palette for new players
 const PLAYER_COLORS = [
   '#00b4d8', // Teal
   '#7209b7', // Violet
@@ -64,6 +66,7 @@ const PLAYER_COLORS = [
 
 export const useGame = create<GameState>((set, get) => ({
   user: null,
+  isOnboarding: false,
   isTracking: false,
   path: [],
   trackingStartTime: null,
@@ -71,20 +74,30 @@ export const useGame = create<GameState>((set, get) => ({
   tiles: {},
   walkHistory: [],
 
-  onboardUser: (coords: Coordinate) => {
-    // If user already exists, don't onboard again
-    if (get().user) return;
+  onboardUser: async (coords: Coordinate) => {
+    // If user already exists or is in the middle of onboarding, skip
+    if (get().user || get().isOnboarding) return;
 
+    set({ isOnboarding: true });
+
+    // Fetch H3 base cell and protected cells from backend (Option A)
+    const onboardingResult = await fetchOnboardingData(coords);
+
+    if (!onboardingResult) {
+      set({ isOnboarding: false });
+      return;
+    }
+
+    const { baseCell, baseCoords, protectedCells } = onboardingResult;
     const uid = 'user_' + Math.random().toString(36).substring(2, 11);
     const color = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)];
-    const baseCell = coordinateToCell(coords);
 
     const newUser: User = {
       uid,
       displayName: `Player_${uid.slice(-4)}`,
       color,
       baseCell,
-      protectedRadius: 2, // PROTECTED_RINGS = 2
+      protectedCells,
       totalArea: 0,
       createdAt: Date.now(),
     };
@@ -97,12 +110,14 @@ export const useGame = create<GameState>((set, get) => ({
         claimedAt: Date.now(),
         isBase: true,
         color,
+        coords: baseCoords,
       };
     }
 
     set({
       user: newUser,
       tiles: updatedTiles,
+      isOnboarding: false,
     });
   },
 
@@ -146,7 +161,7 @@ export const useGame = create<GameState>((set, get) => ({
     return { closed, area };
   },
 
-  stopWalk: () => {
+  stopWalk: async () => {
     const { isTracking, path, user } = get();
     if (!isTracking || !user) return { closed: false, area: 0, claimedCount: 0 };
 
@@ -155,12 +170,12 @@ export const useGame = create<GameState>((set, get) => ({
     let claimedCount = 0;
 
     if (closed && area >= 300) { // MIN_LOOP_AREA_SQM = 300
-      // Calculate H3 cells inside the loop
-      const cellIds = tilesInsideLoop(path);
+      // Calculate H3 cells inside the loop via backend fetch (Option A)
+      const claimedTilesList = await tilesInsideLoop(path);
       
       // Claim them in the store
-      get().claimTiles(cellIds, user.uid, user.color);
-      claimedCount = cellIds.length;
+      get().claimTiles(claimedTilesList, user.uid, user.color);
+      claimedCount = claimedTilesList.length;
 
       // Add walk to history
       const newWalk: Walk = {
@@ -190,11 +205,13 @@ export const useGame = create<GameState>((set, get) => ({
     return { closed, area, claimedCount };
   },
 
-  claimTiles: (cellIds: string[], ownerId: string, color: string) => {
+  claimTiles: (tilesToClaim: { cellId: string; coords: { latitude: number; longitude: number }[] }[], ownerId: string, color: string) => {
     set(state => {
       const updatedTiles = { ...state.tiles };
       
-      for (const cellId of cellIds) {
+      for (const tileData of tilesToClaim) {
+        const { cellId, coords } = tileData;
+
         // Stealing rules: verify if target tile is rooted (within 2 rings of base cell)
         const targetTile = updatedTiles[cellId];
         if (targetTile && targetTile.isBase) {
@@ -207,6 +224,7 @@ export const useGame = create<GameState>((set, get) => ({
           claimedAt: Date.now(),
           isBase: false,
           color,
+          coords,
         };
       }
 
@@ -217,6 +235,7 @@ export const useGame = create<GameState>((set, get) => ({
   resetGame: () => {
     set({
       user: null,
+      isOnboarding: false,
       isTracking: false,
       path: [],
       trackingStartTime: null,

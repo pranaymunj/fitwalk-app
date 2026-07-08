@@ -16,7 +16,6 @@ import MapView from 'react-native-maps';
 import { AppMapView } from '../components/MapView';
 import { useGame } from '../state/useGame';
 import { watchLocation } from '../game/tracking';
-import { renderCell } from '../game/tiles';
 import { CLOSE_METERS, MIN_POINTS, MIN_LOOP_AREA_SQM } from '../game/loop';
 import { distance } from '@turf/turf';
 import { toTurfPosition } from '../game/coords';
@@ -131,8 +130,8 @@ export default function MapScreen() {
   };
 
   // Stop Walk Trigger
-  const handleStopWalk = () => {
-    const { closed, area, claimedCount } = stopWalk();
+  const handleStopWalk = async () => {
+    const { closed, area, claimedCount } = await stopWalk();
     
     if (closed) {
       if (area >= MIN_LOOP_AREA_SQM) {
@@ -164,7 +163,7 @@ export default function MapScreen() {
   const renderableTiles = Object.entries(tiles).map(([cellId, tile]) => ({
     cellId,
     color: tile.color,
-    coords: renderCell(cellId),
+    coords: tile.coords,
   }));
 
   // Format Elapsed Time (MM:SS)
