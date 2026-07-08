@@ -110,9 +110,9 @@ export function watchLocation(
         // 2b. Real Device GPS tracking
         locationSubscription = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.Balanced,
-            distanceInterval: 5, // 5 meters
-            timeInterval: 2000,  // 2000 ms
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 1, // 1 meter
+            timeInterval: 1000,  // 1000 ms
           },
           (location) => {
             if (!isSubscribed) return;

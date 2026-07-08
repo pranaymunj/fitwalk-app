@@ -58,6 +58,19 @@ export default function MapScreen() {
     return () => clearInterval(timerId);
   }, [isTracking]);
 
+  // Refs to prevent location subscription teardown on state changes
+  const isTrackingRef = useRef(isTracking);
+  const userRef = useRef(user);
+  const addTrackingPointRef = useRef(addTrackingPoint);
+  const onboardUserRef = useRef(onboardUser);
+
+  useEffect(() => {
+    isTrackingRef.current = isTracking;
+    userRef.current = user;
+    addTrackingPointRef.current = addTrackingPoint;
+    onboardUserRef.current = onboardUser;
+  });
+
   // Handle GPS location watch subscription
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -70,13 +83,13 @@ export default function MapScreen() {
           setCurrentLocation(coords);
 
           // Onboard user with the first GPS fix
-          if (!user) {
-            onboardUser(coords);
+          if (!userRef.current) {
+            onboardUserRef.current(coords);
           }
 
           // If tracking, add points and check loop status
-          if (isTracking) {
-            const { closed, area } = addTrackingPoint(coords);
+          if (isTrackingRef.current) {
+            const { closed, area } = addTrackingPointRef.current(coords);
             setLoopDetails({ closed, area });
           }
         },
@@ -93,7 +106,7 @@ export default function MapScreen() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [isTracking, simulateWalk, user]);
+  }, [simulateWalk]);
 
   // Recenter map on user location
   const handleRecenter = () => {
