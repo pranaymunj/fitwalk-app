@@ -45,6 +45,7 @@ export default function MapScreen() {
   const [simulateWalk, setSimulateWalk] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [loopDetails, setLoopDetails] = useState({ closed: false, area: 0 });
+  const [rawPointCount, setRawPointCount] = useState(0);
   const [ghostLocation, setGhostLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Update ghost location based on active elapsed time (M8 - Ghost You)
@@ -137,6 +138,7 @@ export default function MapScreen() {
 
           // If tracking, add points and check loop status
           if (isTrackingRef.current) {
+            setRawPointCount((prev) => prev + 1);
             const { closed, area } = addTrackingPointRef.current(coords);
             setLoopDetails({ closed, area });
           }
@@ -193,6 +195,7 @@ export default function MapScreen() {
   // Start Walk Trigger
   const handleStartWalk = () => {
     setLoopDetails({ closed: false, area: 0 });
+    setRawPointCount(0);
     startWalk();
   };
 
@@ -316,7 +319,8 @@ export default function MapScreen() {
       {isTracking && (
         <View style={[styles.debugPanel, { top: insets.top + 70 }]}>
           <Text style={styles.debugTitle}>DEBUG HUD</Text>
-          <Text style={styles.debugText}>Points: {path.length}</Text>
+          <Text style={styles.debugText}>Raw Points: {rawPointCount}</Text>
+          <Text style={styles.debugText}>Cleaned Points: {path.length}</Text>
           <Text style={styles.debugText}>Path Len: {Math.round(calculatePathLength(path))} m</Text>
           <Text style={styles.debugText}>
             From Start:{' '}
