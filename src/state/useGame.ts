@@ -7,6 +7,43 @@ import { isPlausibleStep } from '../game/anticheat';
 import { isLoopClosed, loopAreaSqM, calculatePathLength } from '../game/loop';
 import { fetchOnboardingData } from '../game/tiles';
 
+class LatLngKalmanFilter {
+  private lat: number | null = null;
+  private lng: number | null = null;
+  private p: number = 100.0; // Initial error variance
+  private q: number = 1.0; // Process noise (meters motion variance per update)
+
+  reset() {
+    this.lat = null;
+    this.lng = null;
+    this.p = 100.0;
+  }
+
+  process(lat: number, lng: number, accuracy: number): { lat: number; lng: number } {
+    if (this.lat === null || this.lng === null) {
+      this.lat = lat;
+      this.lng = lng;
+      this.p = accuracy * accuracy;
+      return { lat, lng };
+    }
+
+    // 1. Predict (variance grows by motion noise variance)
+    this.p = this.p + this.q;
+
+    // 2. Update
+    const r = accuracy * accuracy;
+    const k = this.p / (this.p + r);
+
+    this.lat = this.lat + k * (lat - this.lat);
+    this.lng = this.lng + k * (lng - this.lng);
+    this.p = (1 - k) * this.p;
+
+    return { lat: this.lat, lng: this.lng };
+  }
+}
+
+const kalmanFilter = new LatLngKalmanFilter();
+
 export interface User {
   uid: string;
   displayName: string;
@@ -64,7 +101,7 @@ interface GameState {
   // Actions
   onboardUser: (coords: Coordinate) => Promise<void>;
   startWalk: () => void;
-  addTrackingPoint: (coords: Coordinate, accuracy?: number) => { closed: boolean; area: number };
+  addTrackingPoint: (coords: Coordinate, accuracy?: number) => { closed: boolean; area: number; added: boolean };
   stopWalk: () => Promise<{ closed: boolean; area: number; claimedCount: number }>;
   claimTiles: (tilesToClaim: { cellId: string; coords: { latitude: number; longitude: number }[] }[], ownerId: string, color: string) => void;
   resetGame: () => void;
@@ -144,6 +181,7 @@ export const useGame = create<GameState>()(
       },
 
       startWalk: () => {
+        kalmanFilter.reset();
         set({
           isTracking: true,
           path: [],
@@ -154,13 +192,14 @@ export const useGame = create<GameState>()(
 
       addTrackingPoint: (coords: Coordinate, accuracy?: number) => {
         const { isTracking, path, trackingStartTime } = get();
-        if (!isTracking || !trackingStartTime) return { closed: false, area: 0 };
+        if (!isTracking || !trackingStartTime) return { closed: false, area: 0, added: false };
 
         // 1. Accuracy Check (M9): Reject GPS points with accuracy > 15m
         if (accuracy !== undefined && accuracy > 15) {
+          console.log(`[GPS Filter] Rejected point with low accuracy: ${accuracy.toFixed(1)}m (Threshold: 15m)`);
           const closed = isLoopClosed(path);
           const area = closed ? loopAreaSqM(path) : 0;
-          return { closed, area };
+          return { closed, area, added: false };
         }
 
         const rawPoint: TimedPoint = {
@@ -174,33 +213,38 @@ export const useGame = create<GameState>()(
         if (newPath.length > 0) {
           const lastPoint = newPath[newPath.length - 1];
           
-          // 2. GPS Jitter: only ADD point if >= 8m (MIN_STEP = 8)
+          // 2. Adaptive Step Threshold: scale threshold by current accuracy
+          // Good accuracy (e.g. 5m) -> Math.max(4, 5 * 0.8) = 4m threshold (smooth/responsive)
+          // Bad accuracy (e.g. 15m) -> Math.max(4, 15 * 0.8) = 12m threshold (stops drift)
+          const stepAcc = accuracy !== undefined ? accuracy : 5;
+          const adaptiveThreshold = Math.max(4, stepAcc * 0.8);
+
           const dist = distance(toTurfPosition(lastPoint), toTurfPosition(rawPoint), { units: 'meters' });
-          if (dist < 8) {
+          if (dist < adaptiveThreshold) {
+            console.log(`[GPS Filter] Rejected point for jitter: step distance ${dist.toFixed(1)}m < adaptive threshold ${adaptiveThreshold.toFixed(1)}m`);
             const closed = isLoopClosed(newPath);
             const area = closed ? loopAreaSqM(newPath) : 0;
-            return { closed, area };
+            return { closed, area, added: false };
           }
 
           // 3. Speed anti-cheat check: reject if speed > 3.5 m/s vs last accepted point
           if (!isPlausibleStep(lastPoint, rawPoint)) {
+            console.log(`[GPS Filter] Rejected point for implausible speed.`);
             const closed = isLoopClosed(newPath);
             const area = closed ? loopAreaSqM(newPath) : 0;
-            return { closed, area };
+            return { closed, area, added: false };
           }
         }
 
-        // 5. Optional smoothing: apply moving-average (alpha = 0.6) on accepted points
-        let finalPoint: TimedPoint = rawPoint;
-        if (newPath.length > 0) {
-          const lastPoint = newPath[newPath.length - 1];
-          const alpha = 0.6;
-          finalPoint = {
-            lat: lastPoint.lat * (1 - alpha) + rawPoint.lat * alpha,
-            lng: lastPoint.lng * (1 - alpha) + rawPoint.lng * alpha,
-            t: rawPoint.t,
-          };
-        }
+        // 5. Kalman filter smoothing: smooth using reported accuracy
+        const smoothAcc = accuracy !== undefined ? accuracy : 5;
+        const smoothed = kalmanFilter.process(rawPoint.lat, rawPoint.lng, smoothAcc);
+        
+        const finalPoint: TimedPoint = {
+          lat: smoothed.lat,
+          lng: smoothed.lng,
+          t: rawPoint.t,
+        };
 
         newPath.push(finalPoint);
         set({ path: newPath });
@@ -208,7 +252,7 @@ export const useGame = create<GameState>()(
         const closed = isLoopClosed(newPath);
         const area = closed ? loopAreaSqM(newPath) : 0;
 
-        return { closed, area };
+        return { closed, area, added: true };
       },
 
       stopWalk: async () => {

@@ -47,6 +47,7 @@ export default function MapScreen() {
   const [loopDetails, setLoopDetails] = useState({ closed: false, area: 0 });
   const [rawPointCount, setRawPointCount] = useState(0);
   const [lastAccuracy, setLastAccuracy] = useState<number | null>(null);
+  const [lastRejected, setLastRejected] = useState(false);
   const [ghostLocation, setGhostLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Update ghost location based on active elapsed time (M8 - Ghost You)
@@ -141,8 +142,9 @@ export default function MapScreen() {
           // If tracking, add points and check loop status
           if (isTrackingRef.current) {
             setRawPointCount((prev) => prev + 1);
-            const { closed, area } = addTrackingPointRef.current(coords, accuracy);
+            const { closed, area, added } = addTrackingPointRef.current(coords, accuracy);
             setLoopDetails({ closed, area });
+            setLastRejected(!added);
           }
         },
         (error) => {
@@ -199,6 +201,7 @@ export default function MapScreen() {
     setLoopDetails({ closed: false, area: 0 });
     setRawPointCount(0);
     setLastAccuracy(null);
+    setLastRejected(false);
     startWalk();
   };
 
@@ -325,6 +328,7 @@ export default function MapScreen() {
           <Text style={styles.debugText}>Raw Points: {rawPointCount}</Text>
           <Text style={styles.debugText}>Accepted Points: {path.length}</Text>
           <Text style={styles.debugText}>Last Accuracy: {lastAccuracy !== null ? `${Math.round(lastAccuracy)} m` : 'N/A'}</Text>
+          <Text style={styles.debugText}>Last Point: {lastRejected ? 'REJECTED 🔴' : 'ACCEPTED 🟢'}</Text>
           <Text style={styles.debugText}>Path Len: {Math.round(calculatePathLength(path))} m</Text>
           <Text style={styles.debugText}>
             From Start:{' '}

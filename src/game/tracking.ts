@@ -116,13 +116,6 @@ export function watchLocation(
           },
           (location) => {
             if (!isSubscribed) return;
-            
-            // Discard weak GPS fixes with accuracy > 15m to prevent distance jumping
-            if (location.coords.accuracy && location.coords.accuracy > 15) {
-              console.warn(`[GPS Filter] Discarded weak GPS fix with accuracy: ${location.coords.accuracy}m`);
-              return;
-            }
-
             onLocation({
               lat: location.coords.latitude,
               lng: location.coords.longitude,
