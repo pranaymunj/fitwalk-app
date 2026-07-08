@@ -64,7 +64,7 @@ interface GameState {
   // Actions
   onboardUser: (coords: Coordinate) => Promise<void>;
   startWalk: () => void;
-  addTrackingPoint: (coords: Coordinate) => { closed: boolean; area: number };
+  addTrackingPoint: (coords: Coordinate, accuracy?: number) => { closed: boolean; area: number };
   stopWalk: () => Promise<{ closed: boolean; area: number; claimedCount: number }>;
   claimTiles: (tilesToClaim: { cellId: string; coords: { latitude: number; longitude: number }[] }[], ownerId: string, color: string) => void;
   resetGame: () => void;
@@ -152,11 +152,18 @@ export const useGame = create<GameState>()(
         });
       },
 
-      addTrackingPoint: (coords: Coordinate) => {
+      addTrackingPoint: (coords: Coordinate, accuracy?: number) => {
         const { isTracking, path, trackingStartTime } = get();
         if (!isTracking || !trackingStartTime) return { closed: false, area: 0 };
 
-        const newPoint: TimedPoint = {
+        // 1. Accuracy Check (M9): Reject GPS points with accuracy > 20m
+        if (accuracy !== undefined && accuracy > 20) {
+          const closed = isLoopClosed(path);
+          const area = closed ? loopAreaSqM(path) : 0;
+          return { closed, area };
+        }
+
+        const rawPoint: TimedPoint = {
           lat: coords.lat,
           lng: coords.lng,
           t: Date.now() - trackingStartTime,
@@ -167,23 +174,35 @@ export const useGame = create<GameState>()(
         if (newPath.length > 0) {
           const lastPoint = newPath[newPath.length - 1];
           
-          // 1. GPS Jitter: discard if < 5m from previous point
-          const dist = distance(toTurfPosition(lastPoint), toTurfPosition(newPoint), { units: 'meters' });
-          if (dist < 5) {
+          // 2. GPS Jitter: only ADD point if >= 8m (MIN_STEP = 8)
+          const dist = distance(toTurfPosition(lastPoint), toTurfPosition(rawPoint), { units: 'meters' });
+          if (dist < 8) {
             const closed = isLoopClosed(newPath);
             const area = closed ? loopAreaSqM(newPath) : 0;
             return { closed, area };
           }
 
-          // 2. Anti-cheat check: discard if speed is implausible (> 3.5 m/s)
-          if (!isPlausibleStep(lastPoint, newPoint)) {
+          // 3. Speed anti-cheat check: reject if speed > 3.5 m/s vs last accepted point
+          if (!isPlausibleStep(lastPoint, rawPoint)) {
             const closed = isLoopClosed(newPath);
             const area = closed ? loopAreaSqM(newPath) : 0;
             return { closed, area };
           }
         }
 
-        newPath.push(newPoint);
+        // 5. Optional smoothing: apply moving-average (alpha = 0.6) on accepted points
+        let finalPoint: TimedPoint = rawPoint;
+        if (newPath.length > 0) {
+          const lastPoint = newPath[newPath.length - 1];
+          const alpha = 0.6;
+          finalPoint = {
+            lat: lastPoint.lat * (1 - alpha) + rawPoint.lat * alpha,
+            lng: lastPoint.lng * (1 - alpha) + rawPoint.lng * alpha,
+            t: rawPoint.t,
+          };
+        }
+
+        newPath.push(finalPoint);
         set({ path: newPath });
 
         const closed = isLoopClosed(newPath);
@@ -201,6 +220,7 @@ export const useGame = create<GameState>()(
         let claimedCount = 0;
 
         if (closed && area >= 300) { // MIN_LOOP_AREA_SQM = 300
+          const distanceWalked = calculatePathLength(path);
           try {
             // Claim loop on the backend database
             const response = await fetch(`${getBackendUrl()}/api/tiles/claim-loop`, {
@@ -211,6 +231,7 @@ export const useGame = create<GameState>()(
                 uid: user.uid,
                 color: user.color,
                 area,
+                distance: distanceWalked,
               }),
             });
 
@@ -226,7 +247,6 @@ export const useGame = create<GameState>()(
           }
 
           // Add walk to history locally
-          const distanceWalked = calculatePathLength(path);
           const newWalk: Walk = {
             walkId: 'walk_' + Math.random().toString(36).substring(2, 11),
             uid: user.uid,

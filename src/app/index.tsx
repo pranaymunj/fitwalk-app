@@ -46,6 +46,7 @@ export default function MapScreen() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [loopDetails, setLoopDetails] = useState({ closed: false, area: 0 });
   const [rawPointCount, setRawPointCount] = useState(0);
+  const [lastAccuracy, setLastAccuracy] = useState<number | null>(null);
   const [ghostLocation, setGhostLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Update ghost location based on active elapsed time (M8 - Ghost You)
@@ -127,9 +128,10 @@ export default function MapScreen() {
     const startWatching = () => {
       setPermissionStatus('checking');
       unsubscribe = watchLocation(
-        (coords) => {
+        (coords, accuracy) => {
           setPermissionStatus('granted');
           setCurrentLocation(coords);
+          setLastAccuracy(accuracy !== undefined ? accuracy : null);
 
           // Onboard user with the first GPS fix
           if (!userRef.current) {
@@ -139,7 +141,7 @@ export default function MapScreen() {
           // If tracking, add points and check loop status
           if (isTrackingRef.current) {
             setRawPointCount((prev) => prev + 1);
-            const { closed, area } = addTrackingPointRef.current(coords);
+            const { closed, area } = addTrackingPointRef.current(coords, accuracy);
             setLoopDetails({ closed, area });
           }
         },
@@ -196,6 +198,7 @@ export default function MapScreen() {
   const handleStartWalk = () => {
     setLoopDetails({ closed: false, area: 0 });
     setRawPointCount(0);
+    setLastAccuracy(null);
     startWalk();
   };
 
@@ -320,7 +323,8 @@ export default function MapScreen() {
         <View style={[styles.debugPanel, { top: insets.top + 70 }]}>
           <Text style={styles.debugTitle}>DEBUG HUD</Text>
           <Text style={styles.debugText}>Raw Points: {rawPointCount}</Text>
-          <Text style={styles.debugText}>Cleaned Points: {path.length}</Text>
+          <Text style={styles.debugText}>Accepted Points: {path.length}</Text>
+          <Text style={styles.debugText}>Last Accuracy: {lastAccuracy !== null ? `${Math.round(lastAccuracy)} m` : 'N/A'}</Text>
           <Text style={styles.debugText}>Path Len: {Math.round(calculatePathLength(path))} m</Text>
           <Text style={styles.debugText}>
             From Start:{' '}

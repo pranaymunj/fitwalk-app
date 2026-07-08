@@ -46,7 +46,7 @@ export function generateSimulatedLoop(center: Coordinate, radiusMeters = 35, num
  * Returns an unsubscribe/cleanup function.
  */
 export function watchLocation(
-  onLocation: (coords: Coordinate) => void,
+  onLocation: (coords: Coordinate, accuracy?: number) => void,
   onError: (error: any) => void,
   options: { simulate: boolean }
 ): () => void {
@@ -87,7 +87,7 @@ export function watchLocation(
 
         // Emit first point immediately
         if (isSubscribed) {
-          onLocation(simulatedPath[currentIndex]);
+          onLocation(simulatedPath[currentIndex], 1);
           currentIndex++;
         }
 
@@ -96,7 +96,7 @@ export function watchLocation(
           if (!isSubscribed) return;
           
           if (currentIndex < simulatedPath.length) {
-            onLocation(simulatedPath[currentIndex]);
+            onLocation(simulatedPath[currentIndex], 1);
             currentIndex++;
           } else {
             // Loop completed, clean up
@@ -126,7 +126,7 @@ export function watchLocation(
             onLocation({
               lat: location.coords.latitude,
               lng: location.coords.longitude,
-            });
+            }, location.coords.accuracy || undefined);
           }
         );
       }
