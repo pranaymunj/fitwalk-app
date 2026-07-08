@@ -130,21 +130,8 @@ export const useGame = create<GameState>()(
           createdAt: Date.now(),
         };
 
-        // Create base cell locally
-        const updatedTiles = { ...get().tiles };
-        if (baseCell) {
-          updatedTiles[baseCell] = {
-            owner: uid,
-            claimedAt: Date.now(),
-            isBase: true,
-            color,
-            coords: baseCoords,
-          };
-        }
-
         set({
           user: newUser,
-          tiles: updatedTiles,
           isOnboarding: false,
         });
 

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { TileModel, UserModel, WalkModel } from './models';
 
 export async function connectDB(): Promise<boolean> {
   const uri = process.env.MONGODB_URI;
@@ -12,6 +13,13 @@ export async function connectDB(): Promise<boolean> {
     // Attempt Mongoose connection with standard settings
     await mongoose.connect(uri);
     console.log('✅ Connected to MongoDB Atlas successfully.');
+
+    // M9 Clean slate: Wipe all previously saved player account progress from DB
+    const tilesDeleted = await TileModel.deleteMany({ owner: { $regex: /^user_/ } });
+    const usersDeleted = await UserModel.deleteMany({ uid: { $regex: /^user_/ } });
+    const walksDeleted = await WalkModel.deleteMany({ uid: { $regex: /^user_/ } });
+    console.log(`🧹 Database Reset: Cleared ${tilesDeleted.deletedCount} player tiles, ${usersDeleted.deletedCount} user profiles, and ${walksDeleted.deletedCount} walks.`);
+
     return true;
   } catch (err) {
     console.error('❌ Failed to connect to MongoDB Atlas:', err);
