@@ -16,7 +16,7 @@ import MapView from 'react-native-maps';
 import { AppMapView } from '../components/MapView';
 import { useGame } from '../state/useGame';
 import { watchLocation } from '../game/tracking';
-import { CLOSE_METERS, MIN_POINTS, MIN_LOOP_AREA_SQM } from '../game/loop';
+import { CLOSE_METERS, MIN_POINTS, MIN_LOOP_AREA_SQM, calculatePathLength, hasMovedAwayFromStart } from '../game/loop';
 import { distance } from '@turf/turf';
 import { toTurfPosition } from '../game/coords';
 
@@ -42,7 +42,6 @@ export default function MapScreen() {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [simulateWalk, setSimulateWalk] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [walkDistance, setWalkDistance] = useState(0);
   const [loopDetails, setLoopDetails] = useState({ closed: false, area: 0 });
 
   // Watch for elapsed time when tracking
@@ -79,13 +78,6 @@ export default function MapScreen() {
           if (isTracking) {
             const { closed, area } = addTrackingPoint(coords);
             setLoopDetails({ closed, area });
-
-            // Calculate current distance covered
-            if (path.length > 0) {
-              const prevPoint = path[path.length - 1];
-              const d = distance(toTurfPosition(prevPoint), toTurfPosition(coords), { units: 'meters' });
-              setWalkDistance((prev) => prev + d);
-            }
           }
         },
         (error) => {
@@ -124,7 +116,6 @@ export default function MapScreen() {
 
   // Start Walk Trigger
   const handleStartWalk = () => {
-    setWalkDistance(0);
     setLoopDetails({ closed: false, area: 0 });
     startWalk();
   };
@@ -155,7 +146,6 @@ export default function MapScreen() {
       );
     }
     
-    setWalkDistance(0);
     setLoopDetails({ closed: false, area: 0 });
   };
 
@@ -236,6 +226,25 @@ export default function MapScreen() {
         </View>
       )}
 
+      {/* Debug Panel HUD */}
+      {isTracking && (
+        <View style={[styles.debugPanel, { top: insets.top + 70 }]}>
+          <Text style={styles.debugTitle}>DEBUG HUD</Text>
+          <Text style={styles.debugText}>Points: {path.length}</Text>
+          <Text style={styles.debugText}>Path Len: {Math.round(calculatePathLength(path))} m</Text>
+          <Text style={styles.debugText}>
+            From Start:{' '}
+            {path.length > 0 && currentLocation
+              ? Math.round(distance(toTurfPosition(path[0]), toTurfPosition(currentLocation), { units: 'meters' }))
+              : 0}{' '}
+            m
+          </Text>
+          <Text style={styles.debugText}>Moved Away: {hasMovedAwayFromStart(path) ? 'YES' : 'NO'}</Text>
+          <Text style={styles.debugText}>Closed: {loopDetails.closed ? 'YES' : 'NO'}</Text>
+          <Text style={styles.debugText}>Area: {Math.round(loopDetails.area)} m²</Text>
+        </View>
+      )}
+
       {/* Floating Action Buttons */}
       <View style={[styles.floatingControls, { top: insets.top + 10 }]}>
         {/* Recenter Button */}
@@ -294,7 +303,7 @@ export default function MapScreen() {
               </View>
               <View style={styles.statBox}>
                 <Text style={styles.statLabel}>DISTANCE</Text>
-                <Text style={styles.statValue}>{Math.round(walkDistance)} m</Text>
+                <Text style={styles.statValue}>{Math.round(calculatePathLength(path))} m</Text>
               </View>
               <View style={styles.statBox}>
                 <Text style={styles.statLabel}>POINTS</Text>
@@ -569,5 +578,32 @@ const styles = StyleSheet.create({
   },
   loopIndicatorText: {
     fontSize: 13,
+  },
+  debugPanel: {
+    position: 'absolute',
+    left: 16,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    padding: 12,
+    borderRadius: 8,
+    width: 170,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 100,
+  },
+  debugTitle: {
+    color: '#afafaf',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 6,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  debugText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    lineHeight: 16,
   },
 });

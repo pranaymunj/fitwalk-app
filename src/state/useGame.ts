@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { TimedPoint, Coordinate } from '../game/coords';
+import { distance } from '@turf/turf';
+import { TimedPoint, Coordinate, toTurfPosition } from '../game/coords';
 import { isPlausibleStep } from '../game/anticheat';
 import { isLoopClosed, loopAreaSqM } from '../game/loop';
 import { fetchOnboardingData, tilesInsideLoop } from '../game/tiles';
@@ -144,17 +145,27 @@ export const useGame = create<GameState>((set, get) => ({
 
     if (newPath.length > 0) {
       const lastPoint = newPath[newPath.length - 1];
-      // Anti-cheat verification
+      
+      // 1. Ignore GPS jitter: discard if < 5m from previous point
+      const dist = distance(toTurfPosition(lastPoint), toTurfPosition(newPoint), { units: 'meters' });
+      if (dist < 5) {
+        const closed = isLoopClosed(newPath);
+        const area = closed ? loopAreaSqM(newPath) : 0;
+        return { closed, area };
+      }
+
+      // 2. Anti-cheat check: discard if speed is implausible (> 3.5 m/s)
       if (!isPlausibleStep(lastPoint, newPoint)) {
-        // Discard fast GPS jumps
-        return { closed: false, area: 0 };
+        const closed = isLoopClosed(newPath);
+        const area = closed ? loopAreaSqM(newPath) : 0;
+        return { closed, area };
       }
     }
 
     newPath.push(newPoint);
     set({ path: newPath });
 
-    // Check if loop has closed
+    // Check if loop has closed on the updated cleaned path
     const closed = isLoopClosed(newPath);
     const area = closed ? loopAreaSqM(newPath) : 0;
 
