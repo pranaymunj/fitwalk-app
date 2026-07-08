@@ -61,6 +61,13 @@ export function isLoopClosed(path: TimedPoint[]): boolean {
   // 3. Check if current position is close to starting position
   const start = path[0];
   const end = path[path.length - 1];
+
+  // 4. M9: Loop time limit guard (20 minutes max)
+  const durationMs = end.t;
+  if (durationMs > LOOP_TIME_LIMIT_MS) {
+    return false;
+  }
+
   const d = distance(toTurfPosition(start), toTurfPosition(end), { units: 'meters' });
 
   return d < CLOSE_METERS;

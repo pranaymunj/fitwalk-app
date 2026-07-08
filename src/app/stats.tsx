@@ -7,7 +7,11 @@ import { useGame } from '../state/useGame';
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
-  const { user, walkHistory } = useGame();
+  const { user, walkHistory, fetchWalkHistory } = useGame();
+
+  React.useEffect(() => {
+    fetchWalkHistory();
+  }, []);
 
   const totalArea = user ? user.totalArea : 0;
   const totalWalks = walkHistory.length;

@@ -12,10 +12,17 @@ export interface MapViewProps {
     latitudeDelta: number;
     longitudeDelta: number;
   };
+  onRegionChangeComplete?: (region: {
+    latitude: number;
+    longitude: number;
+    latitudeDelta: number;
+    longitudeDelta: number;
+  }) => void;
+  ghostLocation?: { latitude: number; longitude: number } | null;
 }
 
 export const AppMapView = forwardRef<MapView, MapViewProps>(
-  ({ userLocation, path, tiles, initialRegion }, ref) => {
+  ({ userLocation, path, tiles, initialRegion, onRegionChangeComplete, ghostLocation }, ref) => {
     return (
       <MapView
         ref={ref}
@@ -24,6 +31,7 @@ export const AppMapView = forwardRef<MapView, MapViewProps>(
         showsUserLocation={false} // Custom marker for more precise control
         showsMyLocationButton={false}
         initialRegion={initialRegion}
+        onRegionChangeComplete={onRegionChangeComplete}
       >
         {/* Draw Claimed H3 Tiles */}
         {tiles.map((tile) => (
@@ -63,6 +71,19 @@ export const AppMapView = forwardRef<MapView, MapViewProps>(
             </View>
           </Marker>
         )}
+
+        {/* Ghost Marker (Milestone M8 - Ghost You) */}
+        {ghostLocation && (
+          <Marker
+            coordinate={ghostLocation}
+            anchor={{ x: 0.5, y: 0.5 }}
+            opacity={0.6}
+          >
+            <View style={styles.ghostDotOutline}>
+              <View style={styles.ghostDot} />
+            </View>
+          </Marker>
+        )}
       </MapView>
     );
   }
@@ -94,5 +115,24 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: '#000000',
+  },
+  ghostDotOutline: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  ghostDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#7209b7',
   },
 });

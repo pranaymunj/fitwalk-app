@@ -1,9 +1,11 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { distance } from '@turf/turf';
 import { TimedPoint, Coordinate, toTurfPosition } from '../game/coords';
 import { isPlausibleStep } from '../game/anticheat';
 import { isLoopClosed, loopAreaSqM } from '../game/loop';
-import { fetchOnboardingData, tilesInsideLoop } from '../game/tiles';
+import { fetchOnboardingData } from '../game/tiles';
 
 export interface User {
   uid: string;
@@ -31,6 +33,15 @@ export interface Walk {
   createdAt: number;
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  displayName: string;
+  totalArea: number;
+  color: string;
+  uid: string;
+  isMe?: boolean;
+}
+
 interface GameState {
   // Authentication & Onboarding
   user: User | null;
@@ -45,6 +56,7 @@ interface GameState {
   // Map Data
   tiles: Record<string, Tile>; // key is H3 index
   walkHistory: Walk[];
+  leaderboard: LeaderboardEntry[];
   
   // Actions
   onboardUser: (coords: Coordinate) => Promise<void>;
@@ -53,6 +65,19 @@ interface GameState {
   stopWalk: () => Promise<{ closed: boolean; area: number; claimedCount: number }>;
   claimTiles: (tilesToClaim: { cellId: string; coords: { latitude: number; longitude: number }[] }[], ownerId: string, color: string) => void;
   resetGame: () => void;
+  
+  // Backend Sync Actions
+  syncUserWithBackend: () => Promise<void>;
+  fetchTilesInViewport: (minLat: number, minLng: number, maxLat: number, maxLng: number) => Promise<void>;
+  fetchWalkHistory: () => Promise<void>;
+  fetchLeaderboard: () => Promise<void>;
+}
+
+// Standard LAN backend API URL fallback
+const DEFAULT_BACKEND_URL = 'http://192.168.0.103:3000';
+
+function getBackendUrl(): string {
+  return process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BACKEND_URL;
 }
 
 // Fixed color palette for new players
@@ -65,186 +90,9 @@ const PLAYER_COLORS = [
   '#4361ee', // Electric Blue
 ];
 
-export const useGame = create<GameState>((set, get) => ({
-  user: null,
-  isOnboarding: false,
-  isTracking: false,
-  path: [],
-  trackingStartTime: null,
-  lastCapturedArea: 0,
-  tiles: {},
-  walkHistory: [],
-
-  onboardUser: async (coords: Coordinate) => {
-    // If user already exists or is in the middle of onboarding, skip
-    if (get().user || get().isOnboarding) return;
-
-    set({ isOnboarding: true });
-
-    // Fetch H3 base cell and protected cells from backend (Option A)
-    const onboardingResult = await fetchOnboardingData(coords);
-
-    if (!onboardingResult) {
-      set({ isOnboarding: false });
-      return;
-    }
-
-    const { baseCell, baseCoords, protectedCells } = onboardingResult;
-    const uid = 'user_' + Math.random().toString(36).substring(2, 11);
-    const color = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)];
-
-    const newUser: User = {
-      uid,
-      displayName: `Player_${uid.slice(-4)}`,
-      color,
-      baseCell,
-      protectedCells,
-      totalArea: 0,
-      createdAt: Date.now(),
-    };
-
-    // Auto-claim the base cell on onboarding
-    const updatedTiles = { ...get().tiles };
-    if (baseCell) {
-      updatedTiles[baseCell] = {
-        owner: uid,
-        claimedAt: Date.now(),
-        isBase: true,
-        color,
-        coords: baseCoords,
-      };
-    }
-
-    set({
-      user: newUser,
-      tiles: updatedTiles,
-      isOnboarding: false,
-    });
-  },
-
-  startWalk: () => {
-    set({
-      isTracking: true,
-      path: [],
-      trackingStartTime: Date.now(),
-      lastCapturedArea: 0,
-    });
-  },
-
-  addTrackingPoint: (coords: Coordinate) => {
-    const { isTracking, path, trackingStartTime } = get();
-    if (!isTracking || !trackingStartTime) return { closed: false, area: 0 };
-
-    const newPoint: TimedPoint = {
-      lat: coords.lat,
-      lng: coords.lng,
-      t: Date.now() - trackingStartTime,
-    };
-
-    const newPath = [...path];
-
-    if (newPath.length > 0) {
-      const lastPoint = newPath[newPath.length - 1];
-      
-      // 1. Ignore GPS jitter: discard if < 5m from previous point
-      const dist = distance(toTurfPosition(lastPoint), toTurfPosition(newPoint), { units: 'meters' });
-      if (dist < 5) {
-        const closed = isLoopClosed(newPath);
-        const area = closed ? loopAreaSqM(newPath) : 0;
-        return { closed, area };
-      }
-
-      // 2. Anti-cheat check: discard if speed is implausible (> 3.5 m/s)
-      if (!isPlausibleStep(lastPoint, newPoint)) {
-        const closed = isLoopClosed(newPath);
-        const area = closed ? loopAreaSqM(newPath) : 0;
-        return { closed, area };
-      }
-    }
-
-    newPath.push(newPoint);
-    set({ path: newPath });
-
-    // Check if loop has closed on the updated cleaned path
-    const closed = isLoopClosed(newPath);
-    const area = closed ? loopAreaSqM(newPath) : 0;
-
-    return { closed, area };
-  },
-
-  stopWalk: async () => {
-    const { isTracking, path, user } = get();
-    if (!isTracking || !user) return { closed: false, area: 0, claimedCount: 0 };
-
-    const closed = isLoopClosed(path);
-    const area = closed ? loopAreaSqM(path) : 0;
-    let claimedCount = 0;
-
-    if (closed && area >= 300) { // MIN_LOOP_AREA_SQM = 300
-      // Calculate H3 cells inside the loop via backend fetch (Option A)
-      const claimedTilesList = await tilesInsideLoop(path);
-      
-      // Claim them in the store
-      get().claimTiles(claimedTilesList, user.uid, user.color);
-      claimedCount = claimedTilesList.length;
-
-      // Add walk to history
-      const newWalk: Walk = {
-        walkId: 'walk_' + Math.random().toString(36).substring(2, 11),
-        uid: user.uid,
-        path,
-        areaClaimed: area,
-        createdAt: Date.now(),
-      };
-
-      set(state => ({
-        walkHistory: [newWalk, ...state.walkHistory],
-        user: state.user ? {
-          ...state.user,
-          totalArea: state.user.totalArea + area,
-        } : null,
-        lastCapturedArea: area,
-      }));
-    }
-
-    set({
-      isTracking: false,
-      path: [],
-      trackingStartTime: null,
-    });
-
-    return { closed, area, claimedCount };
-  },
-
-  claimTiles: (tilesToClaim: { cellId: string; coords: { latitude: number; longitude: number }[] }[], ownerId: string, color: string) => {
-    set(state => {
-      const updatedTiles = { ...state.tiles };
-      
-      for (const tileData of tilesToClaim) {
-        const { cellId, coords } = tileData;
-
-        // Stealing rules: verify if target tile is rooted (within 2 rings of base cell)
-        const targetTile = updatedTiles[cellId];
-        if (targetTile && targetTile.isBase) {
-          // Can never steal base cells directly
-          continue;
-        }
-
-        updatedTiles[cellId] = {
-          owner: ownerId,
-          claimedAt: Date.now(),
-          isBase: false,
-          color,
-          coords,
-        };
-      }
-
-      return { tiles: updatedTiles };
-    });
-  },
-
-  resetGame: () => {
-    set({
+export const useGame = create<GameState>()(
+  persist(
+    (set, get) => ({
       user: null,
       isOnboarding: false,
       isTracking: false,
@@ -253,6 +101,285 @@ export const useGame = create<GameState>((set, get) => ({
       lastCapturedArea: 0,
       tiles: {},
       walkHistory: [],
-    });
-  },
-}));
+      leaderboard: [],
+
+      onboardUser: async (coords: Coordinate) => {
+        if (get().user || get().isOnboarding) return;
+
+        set({ isOnboarding: true });
+
+        // Fetch onboarding H3 indices from backend (Option A)
+        const onboardingResult = await fetchOnboardingData(coords);
+
+        if (!onboardingResult) {
+          set({ isOnboarding: false });
+          return;
+        }
+
+        const { baseCell, baseCoords, protectedCells } = onboardingResult;
+        const uid = 'user_' + Math.random().toString(36).substring(2, 11);
+        const color = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)];
+
+        const newUser: User = {
+          uid,
+          displayName: `Player_${uid.slice(-4)}`,
+          color,
+          baseCell,
+          protectedCells,
+          totalArea: 0,
+          createdAt: Date.now(),
+        };
+
+        // Create base cell locally
+        const updatedTiles = { ...get().tiles };
+        if (baseCell) {
+          updatedTiles[baseCell] = {
+            owner: uid,
+            claimedAt: Date.now(),
+            isBase: true,
+            color,
+            coords: baseCoords,
+          };
+        }
+
+        set({
+          user: newUser,
+          tiles: updatedTiles,
+          isOnboarding: false,
+        });
+
+        // Sync with backend immediately
+        await get().syncUserWithBackend();
+      },
+
+      startWalk: () => {
+        set({
+          isTracking: true,
+          path: [],
+          trackingStartTime: Date.now(),
+          lastCapturedArea: 0,
+        });
+      },
+
+      addTrackingPoint: (coords: Coordinate) => {
+        const { isTracking, path, trackingStartTime } = get();
+        if (!isTracking || !trackingStartTime) return { closed: false, area: 0 };
+
+        const newPoint: TimedPoint = {
+          lat: coords.lat,
+          lng: coords.lng,
+          t: Date.now() - trackingStartTime,
+        };
+
+        const newPath = [...path];
+
+        if (newPath.length > 0) {
+          const lastPoint = newPath[newPath.length - 1];
+          
+          // 1. GPS Jitter: discard if < 5m from previous point
+          const dist = distance(toTurfPosition(lastPoint), toTurfPosition(newPoint), { units: 'meters' });
+          if (dist < 5) {
+            const closed = isLoopClosed(newPath);
+            const area = closed ? loopAreaSqM(newPath) : 0;
+            return { closed, area };
+          }
+
+          // 2. Anti-cheat check: discard if speed is implausible (> 3.5 m/s)
+          if (!isPlausibleStep(lastPoint, newPoint)) {
+            const closed = isLoopClosed(newPath);
+            const area = closed ? loopAreaSqM(newPath) : 0;
+            return { closed, area };
+          }
+        }
+
+        newPath.push(newPoint);
+        set({ path: newPath });
+
+        const closed = isLoopClosed(newPath);
+        const area = closed ? loopAreaSqM(newPath) : 0;
+
+        return { closed, area };
+      },
+
+      stopWalk: async () => {
+        const { isTracking, path, user } = get();
+        if (!isTracking || !user) return { closed: false, area: 0, claimedCount: 0 };
+
+        const closed = isLoopClosed(path);
+        const area = closed ? loopAreaSqM(path) : 0;
+        let claimedCount = 0;
+
+        if (closed && area >= 300) { // MIN_LOOP_AREA_SQM = 300
+          try {
+            // Claim loop on the backend database
+            const response = await fetch(`${getBackendUrl()}/api/tiles/claim-loop`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                path,
+                uid: user.uid,
+                color: user.color,
+                area,
+              }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              const claimedTilesList = data.tiles || [];
+              
+              get().claimTiles(claimedTilesList, user.uid, user.color);
+              claimedCount = claimedTilesList.length;
+            }
+          } catch (err) {
+            console.error('Failed to claim loop on backend:', err);
+          }
+
+          // Add walk to history locally
+          const newWalk: Walk = {
+            walkId: 'walk_' + Math.random().toString(36).substring(2, 11),
+            uid: user.uid,
+            path,
+            areaClaimed: area,
+            createdAt: Date.now(),
+          };
+
+          set(state => ({
+            walkHistory: [newWalk, ...state.walkHistory],
+            user: state.user ? {
+              ...state.user,
+              totalArea: state.user.totalArea + area,
+            } : null,
+            lastCapturedArea: area,
+          }));
+
+          // Sync user stats & leaderboard
+          await get().syncUserWithBackend();
+          await get().fetchLeaderboard();
+        }
+
+        set({
+          isTracking: false,
+          path: [],
+          trackingStartTime: null,
+        });
+
+        return { closed, area, claimedCount };
+      },
+
+      claimTiles: (tilesToClaim, ownerId, color) => {
+        set(state => {
+          const updatedTiles = { ...state.tiles };
+          for (const tileData of tilesToClaim) {
+            const { cellId, coords } = tileData;
+            updatedTiles[cellId] = {
+              owner: ownerId,
+              claimedAt: Date.now(),
+              isBase: false,
+              color,
+              coords,
+            };
+          }
+          return { tiles: updatedTiles };
+        });
+      },
+
+      resetGame: () => {
+        set({
+          user: null,
+          isOnboarding: false,
+          isTracking: false,
+          path: [],
+          trackingStartTime: null,
+          lastCapturedArea: 0,
+          tiles: {},
+          walkHistory: [],
+          leaderboard: [],
+        });
+      },
+
+      syncUserWithBackend: async () => {
+        const { user } = get();
+        if (!user) return;
+
+        try {
+          await fetch(`${getBackendUrl()}/api/users/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user),
+          });
+        } catch (err) {
+          console.error('Failed to sync user profile with backend:', err);
+        }
+      },
+
+      fetchTilesInViewport: async (minLat, minLng, maxLat, maxLng) => {
+        try {
+          const response = await fetch(`${getBackendUrl()}/api/tiles/query-viewport`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minLat, minLng, maxLat, maxLng }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const returnedTiles = data.tiles || {};
+            
+            // Merge into local tiles state (Option A viewport querying)
+            set(state => ({
+              tiles: {
+                ...state.tiles,
+                ...returnedTiles,
+              },
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to fetch viewport tiles:', err);
+        }
+      },
+
+      fetchWalkHistory: async () => {
+        const { user } = get();
+        if (!user) return;
+
+        try {
+          const response = await fetch(`${getBackendUrl()}/api/users/${user.uid}/walks`);
+          if (response.ok) {
+            const data = await response.json();
+            set({ walkHistory: data.walks || [] });
+          }
+        } catch (err) {
+          console.error('Failed to fetch walk history:', err);
+        }
+      },
+
+      fetchLeaderboard: async () => {
+        try {
+          const response = await fetch(`${getBackendUrl()}/api/leaderboard`);
+          if (response.ok) {
+            const data = await response.json();
+            const entries = data.leaderboard || [];
+            
+            // Mark which entry is current user client side
+            const currentUser = get().user;
+            const processed = entries.map((e: any) => ({
+              ...e,
+              isMe: currentUser ? e.uid === currentUser.uid : false,
+            }));
+
+            set({ leaderboard: processed });
+          }
+        } catch (err) {
+          console.error('Failed to fetch leaderboard:', err);
+        }
+      },
+    }),
+    {
+      name: 'fitwalk-game-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        user: state.user,
+        walkHistory: state.walkHistory,
+      }),
+    }
+  )
+);

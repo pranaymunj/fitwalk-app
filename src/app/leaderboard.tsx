@@ -15,42 +15,15 @@ interface LeaderboardEntry {
 
 export default function LeaderboardScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useGame();
+  const { user, leaderboard, fetchLeaderboard } = useGame();
 
-  // Pre-seeded mock friends/competitors for the leaderboard per Section 9.1 & 10
-  const mockEntries: Omit<LeaderboardEntry, 'isSelf'>[] = [
-    { uid: 'bot_alpha', name: 'AlphaWalker', area: 12500, color: '#7209b7' },
-    { uid: 'bot_king', name: 'GridKing', area: 8400, color: '#38b000' },
-    { uid: 'bot_blaze', name: 'TrailBlazer', area: 3200, color: '#ffb703' },
-    { uid: 'bot_solo', name: 'SoloHiker', area: 950, color: '#4b4b4b' },
-  ];
-
-  // Map the active user into the leaderboard
-  const selfEntry: LeaderboardEntry | null = user
-    ? {
-        uid: user.uid,
-        name: `${user.displayName} (You)`,
-        area: user.totalArea,
-        color: user.color,
-        isSelf: true,
-      }
-    : null;
-
-  // Build the complete list and rank by area (descending)
-  const fullLeaderboard: LeaderboardEntry[] = [
-    ...mockEntries.map((entry) => ({ ...entry, isSelf: false })),
-  ];
-
-  if (selfEntry) {
-    fullLeaderboard.push(selfEntry);
-  }
-
-  // Sort descending
-  fullLeaderboard.sort((a, b) => b.area - a.area);
+  React.useEffect(() => {
+    fetchLeaderboard();
+  }, []);
 
   // Find user's rank
-  const selfRankIndex = fullLeaderboard.findIndex((e) => e.isSelf);
-  const selfRank = selfRankIndex !== -1 ? selfRankIndex + 1 : '-';
+  const selfEntry = leaderboard.find((e) => e.isMe);
+  const selfRank = selfEntry ? selfEntry.rank : '-';
 
   return (
     <View style={styles.container}>
@@ -75,18 +48,17 @@ export default function LeaderboardScreen() {
               </View>
               <View>
                 <Text style={styles.selfCardName}>Your Ranking</Text>
-                <Text style={styles.selfCardSub}>{selfEntry.name}</Text>
+                <Text style={styles.selfCardSub}>{selfEntry.displayName} (You)</Text>
               </View>
             </View>
-            <Text style={styles.selfCardArea}>{Math.round(selfEntry.area)} m²</Text>
+            <Text style={styles.selfCardArea}>{Math.round(selfEntry.totalArea)} m²</Text>
           </View>
         )}
 
         {/* Leaderboard List */}
         <View style={styles.listSection}>
-          {fullLeaderboard.map((entry, index) => {
-            const rank = index + 1;
-            const isTop3 = rank <= 3;
+          {leaderboard.map((entry) => {
+            const rank = entry.rank;
             
             let rankIcon = null;
             if (rank === 1) rankIcon = <Ionicons name="trophy" size={18} color="#ffd700" />;
@@ -98,7 +70,7 @@ export default function LeaderboardScreen() {
                 key={entry.uid}
                 style={[
                   styles.rankRow,
-                  entry.isSelf && styles.rankRowSelf,
+                  entry.isMe && styles.rankRowSelf,
                 ]}
               >
                 {/* Rank & Icon */}
@@ -117,21 +89,21 @@ export default function LeaderboardScreen() {
                 <Text
                   style={[
                     styles.rankName,
-                    entry.isSelf && styles.rankNameSelf,
+                    entry.isMe && styles.rankNameSelf,
                   ]}
                   numberOfLines={1}
                 >
-                  {entry.name}
+                  {entry.displayName}{entry.isMe ? ' (You)' : ''}
                 </Text>
 
                 {/* Captured Area */}
                 <Text
                   style={[
                     styles.rankArea,
-                    entry.isSelf && styles.rankAreaSelf,
+                    entry.isMe && styles.rankAreaSelf,
                   ]}
                 >
-                  {Math.round(entry.area)} m²
+                  {Math.round(entry.totalArea)} m²
                 </Text>
               </View>
             );

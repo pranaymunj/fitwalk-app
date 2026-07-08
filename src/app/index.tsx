@@ -35,6 +35,8 @@ export default function MapScreen() {
     addTrackingPoint,
     stopWalk,
     resetGame,
+    fetchTilesInViewport,
+    walkHistory,
   } = useGame();
 
   // Local state
@@ -43,6 +45,52 @@ export default function MapScreen() {
   const [simulateWalk, setSimulateWalk] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [loopDetails, setLoopDetails] = useState({ closed: false, area: 0 });
+  const [ghostLocation, setGhostLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Update ghost location based on active elapsed time (M8 - Ghost You)
+  const latestWalk = walkHistory[0];
+  useEffect(() => {
+    if (!isTracking || !latestWalk) {
+      setGhostLocation(null);
+      return;
+    }
+
+    const elapsedMs = elapsedTime * 1000;
+    const walkPath = latestWalk.path;
+
+    if (walkPath.length === 0) {
+      setGhostLocation(null);
+      return;
+    }
+
+    if (elapsedMs <= walkPath[0].t) {
+      setGhostLocation({ latitude: walkPath[0].lat, longitude: walkPath[0].lng });
+      return;
+    }
+
+    if (elapsedMs >= walkPath[walkPath.length - 1].t) {
+      setGhostLocation({
+        latitude: walkPath[walkPath.length - 1].lat,
+        longitude: walkPath[walkPath.length - 1].lng,
+      });
+      return;
+    }
+
+    // Interpolate between path points
+    for (let i = 0; i < walkPath.length - 1; i++) {
+      const p1 = walkPath[i];
+      const p2 = walkPath[i + 1];
+      if (elapsedMs >= p1.t && elapsedMs <= p2.t) {
+        const duration = p2.t - p1.t;
+        const ratio = duration === 0 ? 0 : (elapsedMs - p1.t) / duration;
+        setGhostLocation({
+          latitude: p1.lat + ratio * (p2.lat - p1.lat),
+          longitude: p1.lng + ratio * (p2.lng - p1.lng),
+        });
+        break;
+      }
+    }
+  }, [isTracking, elapsedTime, latestWalk]);
 
   // Watch for elapsed time when tracking
   useEffect(() => {
@@ -118,6 +166,21 @@ export default function MapScreen() {
         longitudeDelta: 0.005,
       });
     }
+  };
+
+  // Handle Map Viewport changes to load tiles from backend (Option A)
+  const handleRegionChangeComplete = (region: {
+    latitude: number;
+    longitude: number;
+    latitudeDelta: number;
+    longitudeDelta: number;
+  }) => {
+    const minLat = region.latitude - region.latitudeDelta / 2;
+    const maxLat = region.latitude + region.latitudeDelta / 2;
+    const minLng = region.longitude - region.longitudeDelta / 2;
+    const maxLng = region.longitude + region.longitudeDelta / 2;
+
+    fetchTilesInViewport(minLat, minLng, maxLat, maxLng);
   };
 
   // Auto-center map on first GPS fix
@@ -219,6 +282,8 @@ export default function MapScreen() {
         userLocation={currentLocation}
         path={path}
         tiles={renderableTiles}
+        onRegionChangeComplete={handleRegionChangeComplete}
+        ghostLocation={ghostLocation}
         initialRegion={
           currentLocation
             ? {
@@ -230,6 +295,14 @@ export default function MapScreen() {
             : undefined
         }
       />
+
+      {/* Weak GPS / Waiting for signal Banner */}
+      {!currentLocation && (
+        <View style={[styles.banner, { top: insets.top + 10, backgroundColor: '#ffe3e3', borderColor: '#ffb3b3' }]}>
+          <Ionicons name="warning-outline" size={16} color="#d93838" />
+          <Text style={[styles.bannerText, { color: '#d93838' }]}>Waiting for GPS signal...</Text>
+        </View>
+      )}
 
       {/* Weak GPS / Simulating Alert Banner */}
       {simulateWalk && (

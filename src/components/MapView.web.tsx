@@ -3,7 +3,7 @@ import { StyleSheet, View, Text } from 'react-native';
 import { MapViewProps } from './MapView';
 
 export const AppMapView = forwardRef<any, MapViewProps>(
-  ({ userLocation, path, tiles, initialRegion }, ref) => {
+  ({ userLocation, path, tiles, initialRegion, onRegionChangeComplete, ghostLocation }, ref) => {
     return (
       <View style={styles.webMapContainer}>
         <View style={styles.webInfoBox}>

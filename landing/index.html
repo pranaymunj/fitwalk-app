@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="FitWalk - Claim your city grid. A walking-territory game powered by H3 hex grids.">
+  <title>FitWalk | Claim Your City Grid</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #000000;
+      --fg: #ffffff;
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --accent: #7209b7;
+      --accent-hover: #5a0793;
+      --text-mute: #8a8a8a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Background Gradients */
+    .bg-gradient {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at 50% 30%, rgba(114, 9, 183, 0.15) 0%, transparent 70%);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 32px 0;
+    }
+
+    .logo {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+    }
+
+    .github-link {
+      color: var(--fg);
+      text-decoration: none;
+      font-size: 14px;
+      border: 1px solid var(--card-border);
+      padding: 8px 16px;
+      border-radius: 30px;
+      background-color: var(--card-bg);
+      transition: all 0.2s ease;
+    }
+
+    .github-link:hover {
+      background-color: var(--fg);
+      color: var(--bg);
+      border-color: var(--fg);
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      padding: 80px 0 100px 0;
+      position: relative;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 24px;
+      border: 1px solid rgba(114, 9, 183, 0.3);
+      padding: 6px 16px;
+      border-radius: 20px;
+      background-color: rgba(114, 9, 183, 0.05);
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 64px;
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      letter-spacing: -2px;
+    }
+
+    h1 span {
+      background: linear-gradient(135deg, #ffffff 40%, #7209b7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 20px;
+      color: var(--text-mute);
+      max-width: 600px;
+      margin: 0 auto 40px auto;
+      font-weight: 300;
+    }
+
+    /* Form Styles */
+    .notify-form {
+      display: flex;
+      max-width: 480px;
+      margin: 0 auto 60px auto;
+      gap: 12px;
+    }
+
+    .notify-input {
+      flex: 1;
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      color: var(--fg);
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .notify-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(114, 9, 183, 0.2);
+    }
+
+    .notify-btn {
+      background-color: var(--fg);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      padding: 0 28px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .notify-btn:hover {
+      background-color: #e0e0e0;
+      transform: translateY(-1px);
+    }
+
+    /* Store Badges */
+    .store-badges {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+    }
+
+    .store-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background-color: #111;
+      border: 1px solid var(--card-border);
+      padding: 12px 24px;
+      border-radius: 12px;
+      text-decoration: none;
+      color: var(--fg);
+      transition: all 0.2s ease;
+      min-width: 170px;
+    }
+
+    .store-badge:hover {
+      border-color: #444;
+      transform: translateY(-2px);
+    }
+
+    .badge-icon {
+      font-size: 24px;
+    }
+
+    .badge-text {
+      text-align: left;
+    }
+
+    .badge-text span {
+      display: block;
+      font-size: 10px;
+      color: var(--text-mute);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-text strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    /* How It Works Section */
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      text-align: center;
+      font-size: 36px;
+      margin-bottom: 60px;
+      letter-spacing: -1px;
+    }
+
+    .how-it-works {
+      padding: 80px 0;
+      border-top: 1px solid var(--card-border);
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+    }
+
+    .step-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 40px 32px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .step-card:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-4px);
+    }
+
+    .step-num {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background-color: rgba(114, 9, 183, 0.1);
+      border: 1px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--fg);
+      font-weight: 700;
+      font-size: 20px;
+      margin: 0 auto 24px auto;
+      box-shadow: 0 0 16px rgba(114, 9, 183, 0.2);
+    }
+
+    .step-card h3 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .step-card p {
+      color: var(--text-mute);
+      font-size: 15px;
+    }
+
+    /* Features Grid */
+    .features {
+      padding: 80px 0 120px 0;
+      border-top: 1px solid var(--card-border);
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 32px;
+      background-color: rgba(255, 255, 255, 0.02);
+      transition: all 0.2s ease;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+      background-color: var(--card-bg);
+    }
+
+    .feature-icon {
+      font-size: 32px;
+      color: var(--accent);
+      margin-bottom: 20px;
+    }
+
+    .feature-card h3 {
+      font-size: 20px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .feature-card p {
+      color: var(--text-mute);
+      font-size: 14px;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 48px 0;
+      text-align: center;
+      color: var(--text-mute);
+      font-size: 14px;
+    }
+
+    footer p {
+      margin-bottom: 16px;
+    }
+
+    /* Responsiveness */
+    @media (max-width: 900px) {
+      h1 {
+        font-size: 48px;
+      }
+      .steps-grid, .features-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+    }
+
+    @media (max-width: 500px) {
+      h1 {
+        font-size: 36px;
+      }
+      .notify-form {
+        flex-direction: column;
+      }
+      .notify-btn {
+        padding: 16px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-gradient"></div>
+
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-dot"></div>
+        FitWalk
+      </div>
+      <a href="https://github.com/pranaymunj/fitwalk-app" class="github-link" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+    </header>
+
+    <section class="hero">
+      <div class="badge">Milestone 10 Stable Release</div>
+      <h1>Claim Your <span>City Grid</span></h1>
+      <p class="hero-subtitle">Turn your daily walks into a tactical territory-capture game. Enclose real-world space to claim H3 grid cells and claim dominance over bots.</p>
+
+      <form class="notify-form" onsubmit="event.preventDefault(); alert('Thanks for signing up! We\'ll notify you when FitWalk releases.'); this.reset();">
+        <input type="email" class="notify-input" placeholder="Enter your email to get notified" required>
+        <button type="submit" class="notify-btn">Notify Me</button>
+      </form>
+
+      <div class="store-badges">
+        <a href="#" class="store-badge" onclick="event.preventDefault(); alert('App Store release coming soon!');">
+          <div class="badge-icon"></div>
+          <div class="badge-text">
+            <span>Download on the</span>
+            <strong>App Store</strong>
+          </div>
+        </a>
+        <a href="#" class="store-badge" onclick="event.preventDefault(); alert('Google Play Store release coming soon!');">
+          <div class="badge-icon">▶</div>
+          <div class="badge-text">
+            <span>Get it on</span>
+            <strong>Google Play</strong>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <h2 class="section-title">How It Works</h2>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">1</div>
+          <h3>Walk Your Route</h3>
+          <p>Start walk tracking inside the app. Take a circular walk around your neighborhood blocks.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">2</div>
+          <h3>Close the Loop</h3>
+          <p>Return to within 30 meters of your starting point to close the tracking path loop.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">3</div>
+          <h3>Claim Territory</h3>
+          <p>Submit your loop to claim all enclosing H3 grid tiles under your color and score area points.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <h2 class="section-title">Game Features</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⬡</div>
+          <h3>Capture Territory</h3>
+          <p>Claim H3 grid tiles (resolution 10) by walking enclosed loops. Tiles are filled with your unique player color on the map.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>Base Protection (Roots)</h3>
+          <p>Your primary home base cell and the surrounding 2 grid rings are protected. Competitor bots cannot steal them.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚔️</div>
+          <h3>Tile Stealing</h3>
+          <p>Encircle competitor bot tiles to steal their territory and overwrite them under your color.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <h3>Stats Tracker</h3>
+          <p>View your total claimed area, recorded walk histories, and path stats inside a clean, premium dashboard.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🏆</div>
+          <h3>Live Leaderboard</h3>
+          <p>Compete against local AI bots in a real-time leaderboard ranking sorted by total square meters of claimed territory.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⏱️</div>
+          <h3>Lazy Tile Decay</h3>
+          <p>Territory isn't permanent. Claims older than 7 days decay and revert to neutral unless walked and claimed again.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>&copy; 2026 FitWalk. Designed with minimalist aesthetics for outdoor gamers.</p>
+      <p style="font-size: 12px; color: #555;">FitWalk is built using Expo (React Native), TypeScript, Express, and MongoDB.</p>
+    </footer>
+  </div>
+</body>
+</html>
