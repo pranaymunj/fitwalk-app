@@ -27,6 +27,30 @@ function getCellCoords(cell: string) {
   }));
 }
 
+// Haversine formula to compute distance in meters on the backend
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+function getPathLength(path: { lat: number; lng: number }[]): number {
+  let len = 0;
+  for (let i = 1; i < path.length; i++) {
+    len += calculateDistance(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng);
+  }
+  return len;
+}
+
 // Bots definition
 const BOTS = [
   { uid: 'bot_alpha', displayName: 'Bot Alpha', color: '#ffb703', offsetLat: 0.002, offsetLng: 0.002 },
@@ -247,6 +271,7 @@ tilesRouter.post('/claim-loop', async (req: Request, res: Response) => {
 
     const now = new Date();
     const walkId = 'walk_' + Math.random().toString(36).substring(2, 11);
+    const distanceWalked = getPathLength(path);
     
     // Save walk in-memory fallback helper
     const newWalkDoc = {
@@ -254,6 +279,7 @@ tilesRouter.post('/claim-loop', async (req: Request, res: Response) => {
       uid,
       path,
       areaClaimed: area,
+      distanceWalked,
       createdAt: now,
     };
 
@@ -312,10 +338,10 @@ tilesRouter.post('/claim-loop', async (req: Request, res: Response) => {
         claimedTiles.push({ cellId, coords });
       }
 
-      // 2d. Update user total captured area in MongoDB
+      // 2d. Update user total captured area, distance, and walk count in MongoDB
       await UserModel.findOneAndUpdate(
         { uid },
-        { $inc: { totalArea: area } }
+        { $inc: { totalArea: area, totalDistance: distanceWalked, walkCount: 1 } }
       );
 
     } else {

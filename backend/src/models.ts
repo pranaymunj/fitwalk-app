@@ -8,6 +8,8 @@ export interface IUser {
   baseCell: string;
   protectedCells: string[];
   totalArea: number;
+  totalDistance: number; // in meters
+  walkCount: number;
   createdAt: Date;
 }
 
@@ -18,6 +20,8 @@ const UserSchema = new Schema<IUser>({
   baseCell: { type: String, required: true },
   protectedCells: { type: [String], default: [] },
   totalArea: { type: Number, default: 0 },
+  totalDistance: { type: Number, default: 0 },
+  walkCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -56,6 +60,7 @@ export interface IWalk {
   uid: string;
   path: { lat: number; lng: number; t: number }[];
   areaClaimed: number;
+  distanceWalked: number; // in meters
   createdAt: Date;
 }
 
@@ -71,6 +76,7 @@ const WalkSchema = new Schema<IWalk>({
     },
   ],
   areaClaimed: { type: Number, required: true },
+  distanceWalked: { type: Number, required: true, default: 0 },
   createdAt: { type: Date, default: Date.now },
 });
 

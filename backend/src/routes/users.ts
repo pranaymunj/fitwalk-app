@@ -54,6 +54,27 @@ usersRouter.post('/sync', async (req: Request, res: Response) => {
 });
 
 /**
+ * Endpoint: GET /api/users/:uid
+ * Returns the profile of a user.
+ */
+usersRouter.get('/:uid', async (req: Request, res: Response) => {
+  const { uid } = req.params;
+
+  try {
+    if (isDbConnected()) {
+      const user = await UserModel.findOne({ uid });
+      return res.json({ user });
+    } else {
+      const user = mockUsersStore[uid] || null;
+      return res.json({ user });
+    }
+  } catch (err: any) {
+    console.error('Error fetching user:', err);
+    return res.status(500).json({ error: err.message || 'Failed to fetch user.' });
+  }
+});
+
+/**
  * Endpoint: GET /api/users/:uid/walks
  * Returns history of walks for a specific user.
  */
@@ -81,8 +102,10 @@ export function addMockWalk(uid: string, walk: any) {
   }
   mockWalksStore[uid].unshift(walk);
 
-  // Update mock user's total area
+  // Update mock user's total area, distance, and walk count
   if (mockUsersStore[uid]) {
     mockUsersStore[uid].totalArea += walk.areaClaimed;
+    mockUsersStore[uid].totalDistance = (mockUsersStore[uid].totalDistance || 0) + (walk.distanceWalked || 0);
+    mockUsersStore[uid].walkCount = (mockUsersStore[uid].walkCount || 0) + 1;
   }
 }

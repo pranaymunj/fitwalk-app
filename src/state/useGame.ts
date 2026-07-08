@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { distance } from '@turf/turf';
 import { TimedPoint, Coordinate, toTurfPosition } from '../game/coords';
 import { isPlausibleStep } from '../game/anticheat';
-import { isLoopClosed, loopAreaSqM } from '../game/loop';
+import { isLoopClosed, loopAreaSqM, calculatePathLength } from '../game/loop';
 import { fetchOnboardingData } from '../game/tiles';
 
 export interface User {
@@ -14,6 +14,8 @@ export interface User {
   baseCell: string; // H3 index of home base
   protectedCells: string[]; // List of H3 cell IDs that are protected
   totalArea: number; // Sq meters
+  totalDistance?: number; // meters
+  walkCount?: number;
   createdAt: number;
 }
 
@@ -30,6 +32,7 @@ export interface Walk {
   uid: string;
   path: TimedPoint[];
   areaClaimed: number;
+  distanceWalked?: number; // meters
   createdAt: number;
 }
 
@@ -69,6 +72,7 @@ interface GameState {
   // Backend Sync Actions
   syncUserWithBackend: () => Promise<void>;
   fetchTilesInViewport: (minLat: number, minLng: number, maxLat: number, maxLng: number) => Promise<void>;
+  fetchUserProfile: () => Promise<void>;
   fetchWalkHistory: () => Promise<void>;
   fetchLeaderboard: () => Promise<void>;
 }
@@ -222,11 +226,13 @@ export const useGame = create<GameState>()(
           }
 
           // Add walk to history locally
+          const distanceWalked = calculatePathLength(path);
           const newWalk: Walk = {
             walkId: 'walk_' + Math.random().toString(36).substring(2, 11),
             uid: user.uid,
             path,
             areaClaimed: area,
+            distanceWalked,
             createdAt: Date.now(),
           };
 
@@ -235,6 +241,8 @@ export const useGame = create<GameState>()(
             user: state.user ? {
               ...state.user,
               totalArea: state.user.totalArea + area,
+              totalDistance: (state.user.totalDistance || 0) + distanceWalked,
+              walkCount: (state.user.walkCount || 0) + 1,
             } : null,
             lastCapturedArea: area,
           }));
@@ -321,6 +329,23 @@ export const useGame = create<GameState>()(
           }
         } catch (err) {
           console.error('Failed to fetch viewport tiles:', err);
+        }
+      },
+
+      fetchUserProfile: async () => {
+        const { user } = get();
+        if (!user) return;
+
+        try {
+          const response = await fetch(`${getBackendUrl()}/api/users/${user.uid}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+              set({ user: data.user });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch user profile:', err);
         }
       },
 
