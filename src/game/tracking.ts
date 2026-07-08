@@ -18,7 +18,7 @@ export async function requestLocationPermissions(): Promise<boolean> {
  * Generates a pre-calculated circular loop path of Coordinates around a center point.
  * Ensures the loop is closed (ends near the start) and has enough points (N >= 20) and area.
  */
-export function generateSimulatedLoop(center: Coordinate, radiusMeters = 60, numPoints = 24): Coordinate[] {
+export function generateSimulatedLoop(center: Coordinate, radiusMeters = 35, numPoints = 24): Coordinate[] {
   const points: Coordinate[] = [];
   const latMeters = 111111; // 1 degree latitude in meters
   const lngMeters = 111111 * Math.cos((center.lat * Math.PI) / 180); // 1 degree longitude in meters
@@ -71,7 +71,7 @@ export function watchLocation(
         let center: Coordinate = { lat: 37.7749, lng: -122.4194 }; // SF default
         try {
           const currentLoc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
+            accuracy: Location.Accuracy.Lowest,
           });
           center = {
             lat: currentLoc.coords.latitude,
