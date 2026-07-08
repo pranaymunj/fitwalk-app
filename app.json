@@ -8,7 +8,14 @@
     "scheme": "fitwalk",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.anonymous.fitwalk",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "FitWalk needs your location to track your walking trail and capture hex territory cells."
+      },
+      "config": {
+        "googleMapsApiKey": "IOS_GOOGLE_MAPS_API_KEY_PLACEHOLDER"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,6 +23,16 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "package": "com.anonymous.fitwalk",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "ANDROID_GOOGLE_MAPS_API_KEY_PLACEHOLDER"
+        }
       },
       "predictiveBackGestureEnabled": false
     },
