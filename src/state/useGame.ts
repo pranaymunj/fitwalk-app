@@ -156,8 +156,8 @@ export const useGame = create<GameState>()(
         const { isTracking, path, trackingStartTime } = get();
         if (!isTracking || !trackingStartTime) return { closed: false, area: 0 };
 
-        // 1. Accuracy Check (M9): Reject GPS points with accuracy > 20m
-        if (accuracy !== undefined && accuracy > 20) {
+        // 1. Accuracy Check (M9): Reject GPS points with accuracy > 15m
+        if (accuracy !== undefined && accuracy > 15) {
           const closed = isLoopClosed(path);
           const area = closed ? loopAreaSqM(path) : 0;
           return { closed, area };
@@ -174,9 +174,9 @@ export const useGame = create<GameState>()(
         if (newPath.length > 0) {
           const lastPoint = newPath[newPath.length - 1];
           
-          // 2. GPS Jitter: only ADD point if >= 4m (MIN_STEP = 4)
+          // 2. GPS Jitter: only ADD point if >= 8m (MIN_STEP = 8)
           const dist = distance(toTurfPosition(lastPoint), toTurfPosition(rawPoint), { units: 'meters' });
-          if (dist < 4) {
+          if (dist < 8) {
             const closed = isLoopClosed(newPath);
             const area = closed ? loopAreaSqM(newPath) : 0;
             return { closed, area };
