@@ -91,7 +91,7 @@ export function watchLocation(
           currentIndex++;
         }
 
-        // Emit subsequent points every 2000ms (to match GPS interval)
+        // Emit subsequent points every 1000ms
         simulationIntervalId = setInterval(() => {
           if (!isSubscribed) return;
           
@@ -104,7 +104,7 @@ export function watchLocation(
               clearInterval(simulationIntervalId);
             }
           }
-        }, 2000);
+        }, 1000);
 
       } else {
         // 2b. Real Device GPS tracking

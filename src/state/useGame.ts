@@ -174,9 +174,9 @@ export const useGame = create<GameState>()(
         if (newPath.length > 0) {
           const lastPoint = newPath[newPath.length - 1];
           
-          // 2. GPS Jitter: only ADD point if >= 8m (MIN_STEP = 8)
+          // 2. GPS Jitter: only ADD point if >= 4m (MIN_STEP = 4)
           const dist = distance(toTurfPosition(lastPoint), toTurfPosition(rawPoint), { units: 'meters' });
-          if (dist < 8) {
+          if (dist < 4) {
             const closed = isLoopClosed(newPath);
             const area = closed ? loopAreaSqM(newPath) : 0;
             return { closed, area };
